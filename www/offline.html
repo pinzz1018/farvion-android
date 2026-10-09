@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Farvion</title>
+<style>
+  html,body{height:100%;margin:0;background:#FAF9F5;color:#16223d;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;box-sizing:border-box;gap:12px}
+  h1{font-size:20px;margin:0}
+  p{margin:0;color:#5a6479;font-size:15px;line-height:1.5;max-width:320px}
+  button{margin-top:12px;border:0;border-radius:999px;background:#16223d;color:#fff;font-size:15px;padding:12px 28px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="t">No connection</h1>
+  <p id="m">Farvion needs the internet. Check your connection, then try again.</p>
+  <button id="b" onclick="location.replace('https://farvion.my.id')">Try again</button>
+</div>
+<script>
+  var l=(navigator.language||'en').slice(0,2),T={
+    id:['Tidak ada koneksi','Farvion butuh internet. Periksa koneksimu, lalu coba lagi.','Coba lagi'],
+    ms:['Tiada sambungan','Farvion memerlukan internet. Semak sambungan anda, kemudian cuba lagi.','Cuba lagi'],
+    es:['Sin conexión','Farvion necesita internet. Revisa tu conexión e inténtalo de nuevo.','Reintentar']
+  }[l];
+  if(T){document.getElementById('t').textContent=T[0];document.getElementById('m').textContent=T[1];document.getElementById('b').textContent=T[2];}
+  window.addEventListener('online',function(){location.replace('https://farvion.my.id')});
+</script>
+</body>
+</html>

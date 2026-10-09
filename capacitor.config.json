@@ -5,7 +5,11 @@
   "server": {
     "url": "https://farvion.my.id",
     "cleartext": false,
-    "allowNavigation": ["farvion.my.id", "*.farvion.my.id"]
+    "allowNavigation": [
+      "farvion.my.id",
+      "*.farvion.my.id"
+    ],
+    "errorPath": "offline.html"
   },
   "android": {
     "allowMixedContent": false,
@@ -14,10 +18,16 @@
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
-      "providers": ["google.com"]
+      "providers": [
+        "google.com"
+      ]
     },
     "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert"]
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
     }
   }
 }
