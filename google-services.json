@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "362447614238",
+    "project_id": "farvion-beta",
+    "storage_bucket": "farvion-beta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362447614238:android:f065c8143c8a0bde9d990f",
+        "android_client_info": {
+          "package_name": "id.my.farvion"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "362447614238-47dinf9i3tcqaovs2dt600elboijvdfq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "id.my.farvion",
+            "certificate_hash": "47b4fbc534a941099f4be7801449a9ece791e50b"
+          }
+        },
+        {
+          "client_id": "362447614238-qs5atpq79c93mpei6fhoqsiggoq83s3a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8VGQqo6uj0KyT5bsl7OkqWeP7Ry7M6cY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "362447614238-qs5atpq79c93mpei6fhoqsiggoq83s3a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

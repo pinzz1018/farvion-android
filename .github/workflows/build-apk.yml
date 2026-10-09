@@ -1,0 +1,73 @@
+name: Build Farvion APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cek file wajib
+        run: |
+          if [ ! -f google-services.json ]; then
+            echo "::error::google-services.json belum ada di root repo. Unduh dari Firebase Console (app Android id.my.farvion) lalu upload."
+            exit 1
+          fi
+          if [ ! -f signing/farvion-release.keystore ]; then
+            echo "::error::signing/farvion-release.keystore tidak ditemukan."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependency
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      - name: Buat proyek Android
+        run: npx cap add android
+
+      - name: Patch (ikon, manifest, signing)
+        run: node scripts/prepare-android.js
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK rilis
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Siapkan file APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk Farvion.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Farvion-apk
+          path: Farvion.apk
+
+      - name: Rilis (link unduh langsung)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Farvion APK #${{ github.run_number }}
+          files: Farvion.apk
