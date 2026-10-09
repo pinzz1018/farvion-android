@@ -29,4 +29,4 @@ Package ID: `id.my.farvion` · Nama app: **Farvion**
 - Login Google gagal dengan error 10 / "developer error" = SHA-1 belum terdaftar di Firebase, atau google-services.json lama (belum berisi sidik jari). Tambahkan sidik jari lalu unduh ulang google-services.json dan build ulang.
 - Izin notifikasi Android 13+ muncul lewat modal Farvion setelah balasan pertama; bisa juga dinyalakan dari Pengaturan > Notifikasi.
 - Pastikan Firebase Cloud Messaging API (V1) aktif untuk project (sudah dipakai web push, biasanya sudah aktif).
-- Belum ditangani: unduh file hasil generate (blob download) di dalam WebView. Kalau ada fitur unduh yang tidak bereaksi di APK, kabari supaya ditambah plugin Filesystem/Share.
+- Unduh file di APK: ditangani lewat plugin Filesystem + Share (file ditulis ke cache lalu dibuka lewat Share sheet Android, pilih "Simpan ke perangkat"/Drive). Kalau ada jenis unduhan lain yang tidak bereaksi, kabari.
