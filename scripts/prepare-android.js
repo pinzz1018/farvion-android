@@ -75,10 +75,11 @@ if (fs.existsSync(stylesPath)) {
     ["android:textSelectHandleLeft", "@drawable/farvion_select_handle_left"],
     ["android:textSelectHandleRight", "@drawable/farvion_select_handle_right"],
     ["android:textSelectHandle", "@drawable/farvion_select_handle_middle"],
-    // Status bar & navigation bar menyatu dengan latar Farvion (--color-canvas #FDFBF7)
-    // dengan ikon gelap, bukan abu-abu/indigo bawaan template.
+    // Status bar TRANSPARAN (layar penuh, web digambar sampai tepi atas; jarak aman atas
+    // diurus web lewat --android-sat). Navigation bar tetap krem Farvion (--color-canvas
+    // #FDFBF7). Ikon status bar gelap.
     ["colorPrimaryDark", "@color/farvion_canvas"],
-    ["android:statusBarColor", "@color/farvion_canvas"],
+    ["android:statusBarColor", "@android:color/transparent"],
     ["android:navigationBarColor", "@color/farvion_canvas"],
     ["android:windowBackground", "@color/farvion_canvas"],
     ["android:windowLightStatusBar", "true"],
@@ -125,13 +126,116 @@ if (fs.existsSync(stylesPath)) {
     file,
     `package ${pkg};
 
+import android.content.Intent;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.DocumentsContract;
+import android.view.View;
+import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
+  // Tinggi status bar / cutout atas dalam piksel fisik (diisi listener insets).
+  private volatile int topInsetPx = 0;
+
+  // Dibaca web lewat window.FarvionInsets.getTop() -> piksel CSS.
+  public class FarvionInsets {
+    @JavascriptInterface
+    public String getTop() {
+      float density = getResources().getDisplayMetrics().density;
+      return String.valueOf(topInsetPx / (density <= 0 ? 1f : density));
+    }
+  }
+
+  // Pemilih file (<input type=file> tanpa accept gambar/video, mis. tombol "File" di sheet
+  // "Tambahkan ke obrolan") dibuka langsung di folder Download, bukan tab "Terbaru".
+  private static class DownloadsParams extends WebChromeClient.FileChooserParams {
+    private final WebChromeClient.FileChooserParams p;
+    DownloadsParams(WebChromeClient.FileChooserParams p) { this.p = p; }
+    @Override public int getMode() { return p.getMode(); }
+    @Override public String[] getAcceptTypes() { return p.getAcceptTypes(); }
+    @Override public boolean isCaptureEnabled() { return p.isCaptureEnabled(); }
+    @Override public CharSequence getTitle() { return p.getTitle(); }
+    @Override public String getFilenameHint() { return p.getFilenameHint(); }
+    @Override public Intent createIntent() {
+      Intent base = p.createIntent();
+      String[] types = p.getAcceptTypes();
+      if (types != null) {
+        for (String t : types) {
+          if (t != null && (t.startsWith("image/") || t.startsWith("video/"))) return base;
+        }
+      }
+      Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+      i.addCategory(Intent.CATEGORY_OPENABLE);
+      i.setType(base.getType() != null ? base.getType() : "*/*");
+      String[] mimes = base.getStringArrayExtra(Intent.EXTRA_MIME_TYPES);
+      if (mimes != null) i.putExtra(Intent.EXTRA_MIME_TYPES, mimes);
+      if (p.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+      }
+      if (Build.VERSION.SDK_INT >= 26) {
+        i.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+            Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload"));
+      }
+      return i;
+    }
+  }
+
   @Override
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+
+    // Dipasang di onCreate (sebelum halaman pertama selesai dimuat) supaya web bisa
+    // membaca window.FarvionInsets sejak <head>.
+    if (getBridge() != null && getBridge().getWebView() != null) {
+      getBridge().getWebView().addJavascriptInterface(new FarvionInsets(), "FarvionInsets");
+      getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
+        @Override
+        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> cb, FileChooserParams params) {
+          return super.onShowFileChooser(webView, cb, new DownloadsParams(params));
+        }
+      });
+    }
+
+    // Layar penuh: app digambar sampai belakang status bar (transparan).
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    getWindow().setStatusBarColor(Color.TRANSPARENT);
+    getWindow().setNavigationBarColor(Color.parseColor("#FDFBF7"));
+    WindowInsetsControllerCompat ctl =
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+    ctl.setAppearanceLightStatusBars(true);
+    ctl.setAppearanceLightNavigationBars(true);
+
+    View content = findViewById(android.R.id.content);
+    ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
+      Insets bars = insets.getInsets(
+          WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+      Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+      // Atas dibiarkan 0 (web yang memberi jarak lewat --android-sat); bawah/kiri/kanan
+      // tetap dijaga native, termasuk saat keyboard muncul.
+      v.setPadding(bars.left, 0, bars.right, Math.max(bars.bottom, ime.bottom));
+      topInsetPx = bars.top;
+      if (getBridge() != null && getBridge().getWebView() != null) {
+        final float density = getResources().getDisplayMetrics().density;
+        final float css = bars.top / (density <= 0 ? 1f : density);
+        getBridge().getWebView().post(() ->
+            getBridge().getWebView().evaluateJavascript(
+                "window.__setAndroidSat&&window.__setAndroidSat(" + css + ")", null));
+      }
+      return WindowInsetsCompat.CONSUMED;
+    });
+    ViewCompat.requestApplyInsets(content);
   }
 
   @Override
