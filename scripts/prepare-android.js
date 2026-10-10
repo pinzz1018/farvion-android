@@ -3,7 +3,6 @@
 // 2) Salin google-services.json.
 // 3) Patch AndroidManifest (meta-data FCM, izin mikrofon).
 // 4) Patch app/build.gradle (signing rilis dari signing/, versionCode/versionName).
-// 5) Patch res/values/styles.xml (warna aksen tema = biru Farvion: handle seleksi teks, kursor).
 const fs = require("fs");
 const path = require("path");
 
@@ -54,6 +53,39 @@ for (const perm of ["android.permission.RECORD_AUDIO", "android.permission.MODIF
 }
 fs.writeFileSync(manifestPath, manifest);
 
+// 3b) tema: warna seleksi teks (handle teardrop + aksen) = biru Farvion #3D5AFE.
+//     colorAccent / colorControlActivated dipakai WebView & EditText; handle
+//     digambar ulang lewat android:textSelectHandle* (vector biru).
+const stylesPath = path.join(appDir, "src", "main", "res", "values", "styles.xml");
+if (fs.existsSync(stylesPath)) {
+  let styles = fs.readFileSync(stylesPath, "utf8");
+  const setItem = (xml, styleName, itemName, value) => {
+    const styleRe = new RegExp(`(<style\\s+name="${styleName}"[^>]*>)([\\s\\S]*?)(</style>)`);
+    const m = xml.match(styleRe);
+    if (!m) return xml;
+    const itemRe = new RegExp(`<item\\s+name="${itemName.replace(/[.]/g, "\\.")}"[^>]*>[^<]*</item>`);
+    let body = m[2];
+    const item = `<item name="${itemName}">${value}</item>`;
+    body = itemRe.test(body) ? body.replace(itemRe, item) : body + `    ${item}\n`;
+    return xml.replace(styleRe, `$1${body}$3`);
+  };
+  for (const [name, val] of [
+    ["colorAccent", "@color/farvion_accent"],
+    ["colorControlActivated", "@color/farvion_accent"],
+    ["android:textSelectHandleLeft", "@drawable/farvion_select_handle_left"],
+    ["android:textSelectHandleRight", "@drawable/farvion_select_handle_right"],
+    ["android:textSelectHandle", "@drawable/farvion_select_handle_middle"],
+  ]) {
+    // AppTheme.NoActionBar punya parent eksplisit (tidak mewarisi AppTheme) dan
+    // itulah tema yang dipakai activity saat runtime, jadi dua-duanya dipatch.
+    styles = setItem(styles, "AppTheme", name, val);
+    styles = setItem(styles, "AppTheme\\.NoActionBar", name, val);
+  }
+  fs.writeFileSync(stylesPath, styles);
+} else {
+  console.warn("styles.xml tidak ditemukan -- warna seleksi tidak dipatch");
+}
+
 // 4) gradle
 const gradlePath = path.join(appDir, "build.gradle");
 let g = fs.readFileSync(gradlePath, "utf8");
@@ -81,32 +113,6 @@ const run = parseInt(process.env.GITHUB_RUN_NUMBER || "1", 10);
 g = g.replace(/versionCode\s+\d+/, `versionCode ${run}`);
 g = g.replace(/versionName\s+"[^"]*"/, `versionName "2.4.${run}"`);
 fs.writeFileSync(gradlePath, g);
-
-// 5) tema: warna aksen biru Farvion.
-// Template Capacitor punya AppTheme.NoActionBar dengan parent eksplisit (Theme.AppCompat.DayNight.NoActionBar),
-// jadi item di AppTheme TIDAK diwariskan. Tanpa ini, aksen jatuh ke teal bawaan AppCompat (handle seleksi hijau).
-const stylesPath = path.join(resDest, "values", "styles.xml");
-let st = fs.readFileSync(stylesPath, "utf8");
-if (!st.includes("farvion_accent")) {
-  const items =
-    `\n        <item name="colorAccent">@color/farvion_accent</item>` +
-    `\n        <item name="colorControlActivated">@color/farvion_accent</item>` +
-    `\n        <item name="android:colorControlActivated">@color/farvion_accent</item>` +
-    `\n        <item name="android:textColorHighlight">@color/farvion_selection_highlight</item>`;
-  // Hapus colorAccent bawaan template supaya tidak dobel (item ganda dalam satu style).
-  st = st.replace(/\s*<item name="colorAccent">[^<]*<\/item>/g, "");
-  let patched = 0;
-  // Sisipkan ke AppTheme dan AppTheme.NoActionBar (yang dipakai BridgeActivity setelah splash).
-  st = st.replace(/(<style\s+name="AppTheme(?:\.NoActionBar)?"[^>]*>)/g, (m) => {
-    patched++;
-    return m + items;
-  });
-  if (patched < 2) {
-    console.error("GAGAL: styles.xml tidak berisi AppTheme dan AppTheme.NoActionBar (format template berubah).");
-    process.exit(1);
-  }
-  fs.writeFileSync(stylesPath, st);
-}
 
 if (!/signingConfig signingConfigs\.release/.test(g)) {
   console.error("GAGAL: patch signing di build.gradle tidak terpasang (format template berubah).");
