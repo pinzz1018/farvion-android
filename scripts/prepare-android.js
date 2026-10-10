@@ -75,6 +75,16 @@ if (fs.existsSync(stylesPath)) {
     ["android:textSelectHandleLeft", "@drawable/farvion_select_handle_left"],
     ["android:textSelectHandleRight", "@drawable/farvion_select_handle_right"],
     ["android:textSelectHandle", "@drawable/farvion_select_handle_middle"],
+    // Status bar & navigation bar menyatu dengan latar Farvion (--color-canvas #FDFBF7)
+    // dengan ikon gelap, bukan abu-abu/indigo bawaan template.
+    ["colorPrimaryDark", "@color/farvion_canvas"],
+    ["android:statusBarColor", "@color/farvion_canvas"],
+    ["android:navigationBarColor", "@color/farvion_canvas"],
+    ["android:windowBackground", "@color/farvion_canvas"],
+    ["android:windowLightStatusBar", "true"],
+    ["android:windowLightNavigationBar", "true"],
+    ["android:enforceStatusBarContrast", "false"],
+    ["android:enforceNavigationBarContrast", "false"],
   ]) {
     // AppTheme.NoActionBar punya parent eksplisit (tidak mewarisi AppTheme) dan
     // itulah tema yang dipakai activity saat runtime, jadi dua-duanya dipatch.
@@ -85,6 +95,56 @@ if (fs.existsSync(stylesPath)) {
 } else {
   console.warn("styles.xml tidak ditemukan -- warna seleksi tidak dipatch");
 }
+
+// 3c) MainActivity: matikan haptic feedback bawaan WebView supaya tahan-lama di
+//     bagian yang tidak menyeleksi teks tidak menggetarkan HP. (Getaran yang
+//     disengaja app lewat navigator.vibrate tidak terpengaruh.)
+(function patchMainActivity() {
+  const javaRoot = path.join(appDir, "src", "main", "java");
+  const found = [];
+  (function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const f of fs.readdirSync(dir)) {
+      const full = path.join(dir, f);
+      if (fs.statSync(full).isDirectory()) walk(full);
+      else if (f === "MainActivity.java") found.push(full);
+    }
+  })(javaRoot);
+  if (!found.length) {
+    console.warn("MainActivity.java tidak ditemukan -- haptic tidak dipatch");
+    return;
+  }
+  const file = found[0];
+  const src = fs.readFileSync(file, "utf8");
+  const pkg = (src.match(/^\s*package\s+([\w.]+)\s*;/m) || [])[1];
+  if (!pkg) {
+    console.warn("package MainActivity tidak terbaca -- haptic tidak dipatch");
+    return;
+  }
+  fs.writeFileSync(
+    file,
+    `package ${pkg};
+
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+  }
+
+  @Override
+  public void onStart() {
+    super.onStart();
+    if (getBridge() != null && getBridge().getWebView() != null) {
+      getBridge().getWebView().setHapticFeedbackEnabled(false);
+    }
+  }
+}
+`
+  );
+})();
 
 // 4) gradle
 const gradlePath = path.join(appDir, "build.gradle");

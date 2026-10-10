@@ -2,4 +2,5 @@
 <resources>
     <color name="farvion_notif_color">#1E3AE0</color>
     <color name="farvion_accent">#3D5AFE</color>
+    <color name="farvion_canvas">#FDFBF7</color>
 </resources>

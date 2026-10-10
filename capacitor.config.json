@@ -13,7 +13,7 @@
   },
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#FAF9F5"
+    "backgroundColor": "#FDFBF7"
   },
   "plugins": {
     "FirebaseAuthentication": {
