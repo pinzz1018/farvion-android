@@ -2,7 +2,8 @@
 // 1) Salin ikon launcher + ikon status bar notifikasi + warna.
 // 2) Salin google-services.json.
 // 3) Patch AndroidManifest (meta-data FCM, izin mikrofon).
-// 4) Patch app/build.gradle (signing rilis dari signing/, versionCode/versionName).
+// 4) Patch app/build.gradle (signing rilis dari signing/, versionCode = nomor run CI,
+//    versionName = "version" dari https://farvion.my.id/version.json).
 const fs = require("fs");
 const path = require("path");
 
@@ -274,12 +275,38 @@ farvionSigning.load(new FileInputStream(rootProject.file("../signing/keystore.pr
   g = g.replace(/(buildTypes\s*\{\s*release\s*\{)/, "$1\n            signingConfig signingConfigs.release");
 }
 const run = parseInt(process.env.GITHUB_RUN_NUMBER || "1", 10);
+
+// versionName = "version" di https://farvion.my.id/version.json (sumber kebenaran
+// versi Farvion). versionCode TETAP nomor run CI supaya selalu naik (Android
+// menolak update kalau versionCode turun).
+function fetchWebVersion() {
+  const { execFileSync } = require("child_process");
+  let lastErr;
+  for (let i = 1; i <= 3; i++) {
+    try {
+      const out = execFileSync(
+        "curl",
+        ["-fsSL", "--max-time", "20", "https://farvion.my.id/version.json?t=" + Date.now()],
+        { encoding: "utf8" }
+      );
+      const v = String(JSON.parse(out).version || "").trim();
+      if (/^\d+\.\d+\.\d+$/.test(v)) return v;
+      throw new Error("format version tidak valid: " + v);
+    } catch (e) {
+      lastErr = e;
+      console.warn("prepare-android: ambil version.json gagal (percobaan " + i + "/3): " + e.message);
+    }
+  }
+  console.error("GAGAL: tidak bisa baca version.json dari farvion.my.id. " + lastErr.message);
+  process.exit(1);
+}
+const webVersion = fetchWebVersion();
 g = g.replace(/versionCode\s+\d+/, `versionCode ${run}`);
-g = g.replace(/versionName\s+"[^"]*"/, `versionName "2.4.${run}"`);
+g = g.replace(/versionName\s+"[^"]*"/, `versionName "${webVersion}"`);
 fs.writeFileSync(gradlePath, g);
 
 if (!/signingConfig signingConfigs\.release/.test(g)) {
   console.error("GAGAL: patch signing di build.gradle tidak terpasang (format template berubah).");
   process.exit(1);
 }
-console.log("prepare-android: selesai (versionCode " + run + ")");
+console.log("prepare-android: selesai (versionName " + webVersion + ", versionCode " + run + ")");

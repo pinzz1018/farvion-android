@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Farvion</title>
 <style>
+  *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;margin:0;background:#FAF9F5;color:#16223d;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;box-sizing:border-box;gap:12px}
   h1{font-size:20px;margin:0}
@@ -19,12 +20,49 @@
   <button id="b" onclick="location.replace('https://farvion.my.id')">Try again</button>
 </div>
 <script>
-  var l=(navigator.language||'en').slice(0,2),T={
+  // Cegah seleksi teks / menu salin saat tekan-lama.
+  ['selectstart','contextmenu','dragstart'].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()})});
+
+  var TEXTS={
+    en:['No connection','Farvion needs the internet. Check your connection, then try again.','Try again'],
     id:['Tidak ada koneksi','Farvion butuh internet. Periksa koneksimu, lalu coba lagi.','Coba lagi'],
     ms:['Tiada sambungan','Farvion memerlukan internet. Semak sambungan anda, kemudian cuba lagi.','Cuba lagi'],
     es:['Sin conexión','Farvion necesita internet. Revisa tu conexión e inténtalo de nuevo.','Reintentar']
-  }[l];
-  if(T){document.getElementById('t').textContent=T[0];document.getElementById('m').textContent=T[1];document.getElementById('b').textContent=T[2];}
+  };
+  function fromDevice(){
+    var n=(navigator.language||'en').toLowerCase();
+    if(n.indexOf('id')===0||n.indexOf('in')===0)return 'id';
+    if(n.indexOf('ms')===0)return 'ms';
+    if(n.indexOf('es')===0)return 'es';
+    return 'en';
+  }
+  function render(l){
+    var T=TEXTS[l]||TEXTS.en;
+    document.documentElement.lang=TEXTS[l]?l:'en';
+    document.getElementById('t').textContent=T[0];
+    document.getElementById('m').textContent=T[1];
+    document.getElementById('b').textContent=T[2];
+    document.querySelector('.wrap').style.visibility='visible';
+  }
+  // Bahasa pilihan user di app disalin app ke Capacitor Preferences (kunci
+  // farvion_ui_lang): "id"|"en"|"es"|"ms"|"system". "system"/kosong/gagal baca
+  // -> ikut bahasa perangkat.
+  function readAppLang(){
+    try{
+      var C=window.Capacitor,P=C&&C.Plugins&&C.Plugins.Preferences;
+      if(!P||typeof P.get!=='function')return Promise.resolve(null);
+      return Promise.resolve(P.get({key:'farvion_ui_lang'})).then(function(r){return r&&r.value||null}).catch(function(){return null});
+    }catch(e){return Promise.resolve(null)}
+  }
+  // Sembunyikan dulu sampai bahasa ketemu (maks 600 ms) supaya tidak berkedip bahasa lain.
+  document.querySelector('.wrap').style.visibility='hidden';
+  var done=false;
+  function finish(pref){
+    if(done)return;done=true;
+    render(TEXTS[pref]?pref:fromDevice());
+  }
+  setTimeout(function(){finish(null)},600);
+  readAppLang().then(finish);
   window.addEventListener('online',function(){location.replace('https://farvion.my.id')});
 </script>
 </body>
