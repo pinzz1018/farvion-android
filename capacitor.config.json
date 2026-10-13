@@ -3,7 +3,7 @@
   "appName": "Farvion",
   "webDir": "www",
   "server": {
-    "url": "https://farvion.my.id",
+    "url": "https://farvion.my.id/chat",
     "cleartext": false,
     "allowNavigation": [
       "farvion.my.id",

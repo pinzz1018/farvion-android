@@ -25,6 +25,7 @@ Package ID: `id.my.farvion` · Nama app: **Farvion**
 
 ## Penting
 
+- APK membuka `https://farvion.my.id/chat` langsung (bukan `/`), supaya saat app dimuat ulang Android (RAM kecil) tidak sempat memuat landing page dulu.
 - **Backup folder `signing/`.** Semua update APK harus ditandatangani keystore yang sama. Kalau keystore diganti, app lama harus di-uninstall dulu, dan SHA-1 baru harus didaftarkan lagi di Firebase.
 - Login Google gagal dengan error 10 / "developer error" = SHA-1 belum terdaftar di Firebase, atau google-services.json lama (belum berisi sidik jari). Tambahkan sidik jari lalu unduh ulang google-services.json dan build ulang.
 - Izin notifikasi Android 13+ muncul lewat modal Farvion setelah balasan pertama; bisa juga dinyalakan dari Pengaturan > Notifikasi.
