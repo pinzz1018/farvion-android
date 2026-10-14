@@ -152,6 +152,7 @@ import com.getcapacitor.BridgeWebViewClient;
 public class MainActivity extends BridgeActivity {
   // Tinggi status bar / cutout atas dalam piksel fisik (diisi listener insets).
   private volatile int topInsetPx = 0;
+  private volatile int bottomInsetPx = 0;
 
   // Dibaca web lewat window.FarvionInsets.getTop() -> piksel CSS.
   public class FarvionInsets {
@@ -159,6 +160,11 @@ public class MainActivity extends BridgeActivity {
     public String getTop() {
       float density = getResources().getDisplayMetrics().density;
       return String.valueOf(topInsetPx / (density <= 0 ? 1f : density));
+    }
+    @JavascriptInterface
+    public String getBottom() {
+      float density = getResources().getDisplayMetrics().density;
+      return String.valueOf(bottomInsetPx / (density <= 0 ? 1f : density));
     }
   }
 
@@ -204,6 +210,9 @@ public class MainActivity extends BridgeActivity {
     // membaca window.FarvionInsets sejak <head>.
     if (getBridge() != null && getBridge().getWebView() != null) {
       getBridge().getWebView().addJavascriptInterface(new FarvionInsets(), "FarvionInsets");
+      // Matikan efek overscroll/meregang bawaan Android (12+): efek itu menarik seluruh tampilan
+      // WebView, termasuk kotak ketik yang position:fixed, saat obrolan ditarik lewat ujungnya.
+      getBridge().getWebView().setOverScrollMode(View.OVER_SCROLL_NEVER);
       getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
         @Override
         public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> cb, FileChooserParams params) {
@@ -227,7 +236,8 @@ public class MainActivity extends BridgeActivity {
     // Layar penuh: app digambar sampai belakang status bar (transparan).
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     getWindow().setStatusBarColor(Color.TRANSPARENT);
-    getWindow().setNavigationBarColor(Color.parseColor("#FDFBF7"));
+    getWindow().setNavigationBarColor(Color.TRANSPARENT);
+    if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
     WindowInsetsControllerCompat ctl =
         WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
     ctl.setAppearanceLightStatusBars(true);
@@ -240,14 +250,20 @@ public class MainActivity extends BridgeActivity {
       Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
       // Atas dibiarkan 0 (web yang memberi jarak lewat --android-sat); bawah/kiri/kanan
       // tetap dijaga native, termasuk saat keyboard muncul.
-      v.setPadding(bars.left, 0, bars.right, Math.max(bars.bottom, ime.bottom));
+      // Bawah: web digambar sampai tepi layar (supaya overlay/sheet menutup sampai bawah, tanpa
+      // garis krem native). Bar gesture dikirim ke web sebagai --android-sab; saat keyboard
+      // terbuka, native tetap memberi padding setinggi keyboard dan sab = 0.
+      boolean imeOpen = ime.bottom > bars.bottom;
+      v.setPadding(bars.left, 0, bars.right, imeOpen ? ime.bottom : 0);
       topInsetPx = bars.top;
+      bottomInsetPx = imeOpen ? 0 : bars.bottom;
       if (getBridge() != null && getBridge().getWebView() != null) {
         final float density = getResources().getDisplayMetrics().density;
         final float css = bars.top / (density <= 0 ? 1f : density);
         getBridge().getWebView().post(() ->
             getBridge().getWebView().evaluateJavascript(
-                "window.__setAndroidSat&&window.__setAndroidSat(" + css + ")", null));
+                "window.__setAndroidSat&&window.__setAndroidSat(" + css + ");"
+                + "window.__setAndroidSab&&window.__setAndroidSab(" + (bottomInsetPx / (density <= 0 ? 1f : density)) + ")", null));
       }
       return WindowInsetsCompat.CONSUMED;
     });
