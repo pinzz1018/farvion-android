@@ -127,6 +127,7 @@ if (fs.existsSync(stylesPath)) {
     file,
     `package ${pkg};
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -135,6 +136,7 @@ import android.os.Bundle;
 import android.provider.DocumentsContract;
 import android.view.View;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -145,6 +147,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
   // Tinggi status bar / cutout atas dalam piksel fisik (diisi listener insets).
@@ -205,6 +208,18 @@ public class MainActivity extends BridgeActivity {
         @Override
         public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> cb, FileChooserParams params) {
           return super.onShowFileChooser(webView, cb, new DownloadsParams(params));
+        }
+      });
+      // Di HP RAM kecil (mis. HyperOS/MIUI) Android bisa mematikan proses renderer WebView
+      // saat app di latar belakang (tab browser dalam-app, kamera, dst). Tanpa penanganan,
+      // WebView mati: layar beku, semua tombol tidak merespons, atau app crash lalu mulai
+      // dari awal ("relog"). Di sini kita buat ulang activity (WebView baru) lalu muat halaman lagi.
+      getBridge().getWebView().setWebViewClient(new BridgeWebViewClient(getBridge()) {
+        @Override
+        @SuppressLint("NewApi")
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+          runOnUiThread(() -> recreate());
+          return true;
         }
       });
     }
