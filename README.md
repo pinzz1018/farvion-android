@@ -31,3 +31,7 @@ Package ID: `id.my.farvion` · Nama app: **Farvion**
 - Izin notifikasi Android 13+ muncul lewat modal Farvion setelah balasan pertama; bisa juga dinyalakan dari Pengaturan > Notifikasi.
 - Pastikan Firebase Cloud Messaging API (V1) aktif untuk project (sudah dipakai web push, biasanya sudah aktif).
 - Unduh file di APK: ditangani lewat plugin Filesystem + Share (file ditulis ke cache lalu dibuka lewat Share sheet Android, pilih "Simpan ke perangkat"/Drive). Kalau ada jenis unduhan lain yang tidak bereaksi, kabari.
+
+
+## Splash
+Splash native memakai `@capacitor/splash-screen` (latar krem + logo Farvion, `resources/res/drawable/splash.xml` dan `farvion_splash_logo.xml`). Web memanggil `SplashScreen.hide()` saat status login diketahui; batas aman 4 detik di `capacitor.config.json`.

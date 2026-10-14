@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash Android 11 ke bawah (dan latar sebelum splash sistem): kanvas krem + logo di tengah. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/farvion_canvas" />
+    <item
+        android:width="320dp"
+        android:height="320dp"
+        android:gravity="center"
+        android:drawable="@drawable/farvion_splash_logo" />
+</layer-list>

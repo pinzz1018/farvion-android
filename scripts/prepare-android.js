@@ -32,6 +32,15 @@ for (const d of fs.readdirSync(resDest)) {
   }
 }
 
+// 1b) Splash: hapus splash.png bawaan template Capacitor (semua kerapatan/orientasi) supaya tidak
+//     bentrok dengan drawable/splash.xml kita (kanvas krem + logo Farvion).
+for (const d of fs.readdirSync(resDest)) {
+  if (!d.startsWith("drawable")) continue;
+  for (const f of fs.readdirSync(path.join(resDest, d))) {
+    if (/^splash\.(png|jpg|webp)$/.test(f)) fs.unlinkSync(path.join(resDest, d, f));
+  }
+}
+
 // 2) google-services.json
 fs.copyFileSync(path.join(root, "google-services.json"), path.join(appDir, "google-services.json"));
 
@@ -88,10 +97,23 @@ if (fs.existsSync(stylesPath)) {
     ["android:enforceStatusBarContrast", "false"],
     ["android:enforceNavigationBarContrast", "false"],
   ]) {
+    // (tema splash ditangani terpisah di bawah)
     // AppTheme.NoActionBar punya parent eksplisit (tidak mewarisi AppTheme) dan
     // itulah tema yang dipakai activity saat runtime, jadi dua-duanya dipatch.
     styles = setItem(styles, "AppTheme", name, val);
     styles = setItem(styles, "AppTheme\\.NoActionBar", name, val);
+  }
+  // Splash sistem Android 12+ (androidx core-splashscreen): latar krem + logo Farvion.
+  // Hanya dipatch kalau template memakai Theme.SplashScreen untuk tema launch.
+  if (/<style\s+name="AppTheme\.NoActionBarLaunch"[^>]*Theme\.SplashScreen/.test(styles)) {
+    for (const [name, val] of [
+      ["windowSplashScreenBackground", "@color/farvion_canvas"],
+      ["windowSplashScreenAnimatedIcon", "@drawable/farvion_splash_logo"],
+    ]) {
+      styles = setItem(styles, "AppTheme\\.NoActionBarLaunch", name, val);
+    }
+  } else {
+    console.warn("AppTheme.NoActionBarLaunch bukan Theme.SplashScreen -- logo splash Android 12+ tidak dipatch");
   }
   fs.writeFileSync(stylesPath, styles);
 } else {
