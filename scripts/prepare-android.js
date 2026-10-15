@@ -292,6 +292,19 @@ public class MainActivity extends BridgeActivity {
     ViewCompat.requestApplyInsets(content);
   }
 
+  // Setelah splash hilang / app kembali fokus, pastikan layar penuh tetap aktif. Kalau sistem
+  // sempat memasang jarak bar status/navigasi sendiri, muncul pita krem di atas dan bawah
+  // yang tidak ikut tertutup overlay gelap bottom sheet & sidebar.
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (hasFocus) {
+      WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+      View content = findViewById(android.R.id.content);
+      if (content != null) ViewCompat.requestApplyInsets(content);
+    }
+  }
+
   @Override
   public void onStart() {
     super.onStart();
