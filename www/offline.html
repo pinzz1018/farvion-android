@@ -11,23 +11,27 @@
   h1{font-size:20px;margin:0}
   p{margin:0;color:#5a6479;font-size:15px;line-height:1.5;max-width:320px}
   button{margin-top:12px;border:0;border-radius:999px;background:#16223d;color:#fff;font-size:15px;padding:12px 28px}
+  /* Toast hitam dari bawah -- tampilan sama dengan .app-toast di app (FarvionUI.showToast). */
+  .toast{position:fixed;left:50%;bottom:max(32px,calc(env(safe-area-inset-bottom,0px) + 20px));transform:translateX(-50%) translateY(10px);z-index:500;width:max-content;max-width:min(420px,calc(100% - 32px));box-sizing:border-box;background:#16223d;color:#fff;font-size:14px;font-weight:500;line-height:1.45;letter-spacing:.005em;text-align:left;padding:13px 18px;border-radius:14px;border:1px solid rgba(255,255,255,.08);box-shadow:0 10px 28px rgba(22,34,61,.28),0 2px 6px rgba(22,34,61,.16);opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s cubic-bezier(.2,.8,.2,1)}
+  .toast.active{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1 id="t">No connection</h1>
   <p id="m">Farvion needs the internet. Check your connection, then try again.</p>
-  <button id="b" onclick="location.replace('https://farvion.my.id')">Try again</button>
+  <button id="b">Try again</button>
 </div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
   // Cegah seleksi teks / menu salin saat tekan-lama.
   ['selectstart','contextmenu','dragstart'].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()})});
 
   var TEXTS={
-    en:['No connection','Farvion needs the internet. Check your connection, then try again.','Try again'],
-    id:['Tidak ada koneksi','Farvion butuh internet. Periksa koneksimu, lalu coba lagi.','Coba lagi'],
-    ms:['Tiada sambungan','Farvion memerlukan internet. Semak sambungan anda, kemudian cuba lagi.','Cuba lagi'],
-    es:['Sin conexión','Farvion necesita internet. Revisa tu conexión e inténtalo de nuevo.','Reintentar']
+    en:['No connection','Farvion needs the internet. Check your connection, then try again.','Try again','Your internet connection is offline.'],
+    id:['Tidak ada koneksi','Farvion butuh internet. Periksa koneksimu, lalu coba lagi.','Coba lagi','Koneksi internet sedang offline.'],
+    ms:['Tiada sambungan','Farvion memerlukan internet. Semak sambungan anda, kemudian cuba lagi.','Cuba lagi','Sambungan internet sedang luar talian.'],
+    es:['Sin conexión','Farvion necesita internet. Revisa tu conexión e inténtalo de nuevo.','Reintentar','Sin conexión a internet por ahora.']
   };
   function fromDevice(){
     var n=(navigator.language||'en').toLowerCase();
@@ -36,8 +40,10 @@
     if(n.indexOf('es')===0)return 'es';
     return 'en';
   }
+  var toastText=TEXTS.en[3];
   function render(l){
     var T=TEXTS[l]||TEXTS.en;
+    toastText=T[3];
     document.documentElement.lang=TEXTS[l]?l:'en';
     document.getElementById('t').textContent=T[0];
     document.getElementById('m').textContent=T[1];
@@ -63,6 +69,21 @@
   }
   setTimeout(function(){finish(null)},600);
   readAppLang().then(finish);
+  var toastTimer=null;
+  function showToast(){
+    var el=document.getElementById('toast');
+    el.textContent=toastText;
+    el.classList.add('active');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){el.classList.remove('active')},3500);
+  }
+  // "Coba lagi": kalau perangkat masih offline, tetap di halaman ini dan tampilkan
+  // toast (jangan memuat app dari cache -- dulu itu membuat app terbuka setengah
+  // jalan tanpa internet). Kalau sudah online, buka Farvion seperti biasa.
+  document.getElementById('b').addEventListener('click',function(){
+    if(navigator.onLine===false){showToast();return}
+    location.replace('https://farvion.my.id');
+  });
   window.addEventListener('online',function(){location.replace('https://farvion.my.id')});
 </script>
 </body>

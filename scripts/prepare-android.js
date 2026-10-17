@@ -292,19 +292,6 @@ public class MainActivity extends BridgeActivity {
     ViewCompat.requestApplyInsets(content);
   }
 
-  // Setelah splash hilang / app kembali fokus, pastikan layar penuh tetap aktif. Kalau sistem
-  // sempat memasang jarak bar status/navigasi sendiri, muncul pita krem di atas dan bawah
-  // yang tidak ikut tertutup overlay gelap bottom sheet & sidebar.
-  @Override
-  public void onWindowFocusChanged(boolean hasFocus) {
-    super.onWindowFocusChanged(hasFocus);
-    if (hasFocus) {
-      WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-      View content = findViewById(android.R.id.content);
-      if (content != null) ViewCompat.requestApplyInsets(content);
-    }
-  }
-
   @Override
   public void onStart() {
     super.onStart();
@@ -315,6 +302,151 @@ public class MainActivity extends BridgeActivity {
 }
 `
   );
+})();
+
+// 3d) FarvionWebView: terima gambar dari keyboard Android (Gboard "Papan klip", stiker, GIF).
+//     Tanpa ini Gboard menolak dengan toast "Farvion tidak mendukung penempelan gambar di sini",
+//     karena WebView tidak mengaku bisa menerima konten gambar. Kelas ini mengiklankan MIME gambar
+//     lewat EditorInfo lalu meneruskan gambarnya ke web (window.__farvionPasteImage di js/app.js).
+//     Dipasang HATI-HATI: layout WebView bawaan Capacitor dibaca langsung dari node_modules dan
+//     hanya ditimpa kalau bentuknya dikenali. Kalau tidak, build tetap jalan (tanpa fitur ini).
+(function patchPasteImageWebView() {
+  try {
+    const javaRoot = path.join(appDir, "src", "main", "java");
+    let mainFile = null;
+    (function walk(dir) {
+      if (mainFile || !fs.existsSync(dir)) return;
+      for (const f of fs.readdirSync(dir)) {
+        const full = path.join(dir, f);
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else if (f === "MainActivity.java") { mainFile = full; return; }
+      }
+    })(javaRoot);
+    if (!mainFile) throw new Error("MainActivity.java tidak ditemukan");
+    const pkg = (fs.readFileSync(mainFile, "utf8").match(/^\s*package\s+([\w.]+)\s*;/m) || [])[1];
+    if (!pkg) throw new Error("package MainActivity tidak terbaca");
+
+    const libRes = path.join(root, "node_modules", "@capacitor", "android", "capacitor", "src", "main", "res", "layout");
+    if (!fs.existsSync(libRes)) throw new Error("folder layout Capacitor tidak ditemukan: " + libRes);
+    let layoutName = null;
+    let layoutSrc = null;
+    for (const f of fs.readdirSync(libRes)) {
+      if (!f.endsWith(".xml")) continue;
+      const txt = fs.readFileSync(path.join(libRes, f), "utf8");
+      if (/android:id="@\+id\/webview"/.test(txt)) { layoutName = f; layoutSrc = txt; break; }
+    }
+    if (!layoutSrc) throw new Error("layout dengan id webview tidak ditemukan");
+
+    let baseImport = "";
+    let baseClass = "";
+    let tag = "";
+    if (/<com\.getcapacitor\.CapacitorWebView\b/.test(layoutSrc)) {
+      const cwv = path.join(root, "node_modules", "@capacitor", "android", "capacitor", "src", "main", "java", "com", "getcapacitor", "CapacitorWebView.java");
+      if (!fs.existsSync(cwv)) throw new Error("CapacitorWebView.java tidak ditemukan");
+      baseImport = "import com.getcapacitor.CapacitorWebView;";
+      baseClass = "CapacitorWebView";
+      tag = "com.getcapacitor.CapacitorWebView";
+    } else if (/<WebView\b/.test(layoutSrc)) {
+      baseImport = "import android.webkit.WebView;";
+      baseClass = "WebView";
+      tag = "WebView";
+    } else {
+      throw new Error("tag WebView di layout tidak dikenali");
+    }
+
+    const patchedLayout = layoutSrc
+      .replace(new RegExp("<" + tag.replace(/\./g, "\\.") + "\\b", "g"), "<" + pkg + ".FarvionWebView")
+      .replace(new RegExp("</" + tag.replace(/\./g, "\\.") + ">", "g"), "</" + pkg + ".FarvionWebView>");
+    if (patchedLayout === layoutSrc) throw new Error("layout tidak berubah setelah patch");
+
+    const java = `package __PKG__;
+
+import android.content.Context;
+import android.net.Uri;
+import android.os.Build;
+import android.util.AttributeSet;
+import android.util.Base64;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import androidx.core.view.inputmethod.EditorInfoCompat;
+import androidx.core.view.inputmethod.InputConnectionCompat;
+import androidx.core.view.inputmethod.InputContentInfoCompat;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+__BASE_IMPORT__
+
+public class FarvionWebView extends __BASE_CLASS__ {
+  private static final long MAX_BYTES = 10L * 1024 * 1024; // sama dengan MAX_ATTACHMENT_SIZE di app.js
+
+  public FarvionWebView(Context context, AttributeSet attrs) {
+    super(context, attrs);
+  }
+
+  @Override
+  public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+    InputConnection ic = super.onCreateInputConnection(outAttrs);
+    if (ic == null || outAttrs == null) return ic;
+    EditorInfoCompat.setContentMimeTypes(outAttrs, new String[] {
+        "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"
+    });
+    return InputConnectionCompat.createWrapper(ic, outAttrs,
+        (info, flags, opts) -> handleCommit(info, flags));
+  }
+
+  private boolean handleCommit(final InputContentInfoCompat info, int flags) {
+    if (Build.VERSION.SDK_INT >= 25
+        && (flags & InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0) {
+      try {
+        info.requestPermission();
+      } catch (Exception e) {
+        return false;
+      }
+    }
+    final Uri uri = info.getContentUri();
+    final String mime = info.getDescription().getMimeTypeCount() > 0
+        ? info.getDescription().getMimeType(0) : "image/png";
+    new Thread(() -> {
+      String b64 = "";
+      try {
+        InputStream in = getContext().getContentResolver().openInputStream(uri);
+        if (in != null) {
+          ByteArrayOutputStream out = new ByteArrayOutputStream();
+          byte[] buf = new byte[16384];
+          long total = 0;
+          int n;
+          boolean tooBig = false;
+          while ((n = in.read(buf)) > 0) {
+            total += n;
+            if (total > MAX_BYTES) { tooBig = true; break; }
+            out.write(buf, 0, n);
+          }
+          in.close();
+          if (!tooBig) b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+        }
+      } catch (Exception e) {
+        b64 = "";
+      } finally {
+        if (Build.VERSION.SDK_INT >= 25) {
+          try { info.releasePermission(); } catch (Exception ignored) {}
+        }
+      }
+      final String safeMime = mime.replace("'", "");
+      final String js = "window.__farvionPasteImage&&window.__farvionPasteImage('" + safeMime + "','" + b64 + "')";
+      post(() -> evaluateJavascript(js, null));
+    }).start();
+    return true;
+  }
+}
+`.replace("__PKG__", pkg).replace("__BASE_IMPORT__", baseImport).replace("__BASE_CLASS__", baseClass);
+
+    fs.writeFileSync(path.join(path.dirname(mainFile), "FarvionWebView.java"), java);
+    const layoutDest = path.join(resDest, "layout");
+    fs.mkdirSync(layoutDest, { recursive: true });
+    fs.writeFileSync(path.join(layoutDest, layoutName), patchedLayout);
+    console.log("FarvionWebView terpasang (" + layoutName + ", basis " + baseClass + ") -- tempel gambar dari keyboard aktif");
+  } catch (e) {
+    console.warn("Tempel gambar dari keyboard TIDAK dipasang (build tetap lanjut): " + (e && e.message));
+  }
 })();
 
 // 4) gradle
