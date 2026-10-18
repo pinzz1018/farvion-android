@@ -35,3 +35,7 @@ Package ID: `id.my.farvion` · Nama app: **Farvion**
 
 ## Splash
 Splash native memakai `@capacitor/splash-screen` (latar krem + logo Farvion, `resources/res/drawable/splash.xml` dan `farvion_splash_logo.xml`). Web memanggil `SplashScreen.hide()` saat status login diketahui; batas aman 4 detik di `capacitor.config.json`.
+
+
+## Responsif
+Skala teks WebView dikunci 100% (`setTextZoom(100)` di MainActivity, lewat `scripts/prepare-android.js`) supaya ukuran font sistem Android tidak membuat tampilan kegedean. Perlu build APK baru agar berlaku.

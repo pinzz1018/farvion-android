@@ -155,7 +155,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.view.View;
 import android.webkit.JavascriptInterface;
@@ -176,10 +175,6 @@ public class MainActivity extends BridgeActivity {
   // Tinggi status bar / cutout atas dalam piksel fisik (diisi listener insets).
   private volatile int topInsetPx = 0;
   private volatile int bottomInsetPx = 0;
-  // Dipakai pengaman layar penuh: true selama keyboard terbuka (WebView memang menyusut setinggi keyboard).
-  private volatile boolean imeOpenNow = false;
-  private int guardAttempts = 0;
-  private long guardWindowStart = 0;
 
   // Dibaca web lewat window.FarvionInsets.getTop() -> piksel CSS.
   public class FarvionInsets {
@@ -240,6 +235,10 @@ public class MainActivity extends BridgeActivity {
       // Matikan efek overscroll/meregang bawaan Android (12+): efek itu menarik seluruh tampilan
       // WebView, termasuk kotak ketik yang position:fixed, saat obrolan ditarik lewat ujungnya.
       getBridge().getWebView().setOverScrollMode(View.OVER_SCROLL_NEVER);
+      // Kunci skala teks WebView di 100%: tanpa ini, ukuran font sistem Android (Pengaturan > Tampilan >
+      // Ukuran font) membesarkan semua teks di app sehingga tata letak kegedean/terpotong. Tampilan
+      // jadi sama di semua HP; ukuran tampilan (DPI) tetap ditangani CSS responsif.
+      getBridge().getWebView().getSettings().setTextZoom(100);
       getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
         @Override
         public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> cb, FileChooserParams params) {
@@ -260,9 +259,15 @@ public class MainActivity extends BridgeActivity {
       });
     }
 
-    // Layar penuh: app digambar sampai belakang status bar (transparan). Juga dipanggil ulang
-    // di onResume/onWindowFocusChanged (lihat applyEdgeToEdge di bawah).
-    applyEdgeToEdge();
+    // Layar penuh: app digambar sampai belakang status bar (transparan).
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    getWindow().setStatusBarColor(Color.TRANSPARENT);
+    getWindow().setNavigationBarColor(Color.TRANSPARENT);
+    if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
+    WindowInsetsControllerCompat ctl =
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+    ctl.setAppearanceLightStatusBars(true);
+    ctl.setAppearanceLightNavigationBars(true);
 
     View content = findViewById(android.R.id.content);
     ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
@@ -275,7 +280,6 @@ public class MainActivity extends BridgeActivity {
       // garis krem native). Bar gesture dikirim ke web sebagai --android-sab; saat keyboard
       // terbuka, native tetap memberi padding setinggi keyboard dan sab = 0.
       boolean imeOpen = ime.bottom > bars.bottom;
-      imeOpenNow = imeOpen;
       v.setPadding(bars.left, 0, bars.right, imeOpen ? ime.bottom : 0);
       topInsetPx = bars.top;
       bottomInsetPx = imeOpen ? 0 : bars.bottom;
@@ -290,71 +294,6 @@ public class MainActivity extends BridgeActivity {
       return WindowInsetsCompat.CONSUMED;
     });
     ViewCompat.requestApplyInsets(content);
-
-    // Pengaman: tiap tata letak berubah, pastikan WebView benar-benar menempel ke tepi atas dan
-    // bawah layar (kecuali saat keyboard terbuka). Kalau tidak, pasang ulang mode layar penuh.
-    getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(this::guardEdgeToEdge);
-  }
-
-  // (2026-10) Pengaman bagian krem: kalau karena sebab apa pun (kembali dari kamera/pemilih file,
-  // notifikasi, rotasi, dst.) WebView tidak lagi menempel ke tepi atas/bawah layar, pasang ulang
-  // mode layar penuh. Dibatasi 6 percobaan per 2 detik supaya tidak memicu tata letak berulang.
-  private void guardEdgeToEdge() {
-    if (getBridge() == null || getBridge().getWebView() == null) return;
-    if (imeOpenNow) return;
-    final WebView wv = getBridge().getWebView();
-    final View decor = getWindow().getDecorView();
-    if (wv.getHeight() <= 0 || decor.getHeight() <= 0) return;
-    int[] loc = new int[2];
-    wv.getLocationInWindow(loc);
-    boolean inset = loc[1] > 0 || (loc[1] + wv.getHeight()) < decor.getHeight();
-    if (!inset) {
-      guardAttempts = 0;
-      return;
-    }
-    long now = SystemClock.uptimeMillis();
-    if (now - guardWindowStart > 2000) {
-      guardWindowStart = now;
-      guardAttempts = 0;
-    }
-    if (guardAttempts >= 6) return;
-    guardAttempts++;
-    decor.post(this::reapplyEdgeToEdge);
-  }
-
-  // (2026-10) FIX bagian krem di atas (status bar) dan bawah (bar gesture) yang tidak tertutup
-  // overlay gelap setelah user kembali dari pemilih file / foto / kamera. Penyebab: setelah
-  // activity lain (pemilih file, kamera) menutup, jendela app bisa kembali ke mode "konten di
-  // dalam bar sistem" sehingga WebView menyusut setinggi status bar + bar gesture dan sisanya
-  // menampilkan warna latar krem. Mode layar penuh sekarang dipasang ulang setiap app kembali ke
-  // depan / mendapat fokus, lalu insets dikirim ulang ke web (--android-sat / --android-sab).
-  private void applyEdgeToEdge() {
-    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-    getWindow().setStatusBarColor(Color.TRANSPARENT);
-    getWindow().setNavigationBarColor(Color.TRANSPARENT);
-    if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
-    WindowInsetsControllerCompat ctl =
-        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-    ctl.setAppearanceLightStatusBars(true);
-    ctl.setAppearanceLightNavigationBars(true);
-  }
-
-  private void reapplyEdgeToEdge() {
-    applyEdgeToEdge();
-    View content = findViewById(android.R.id.content);
-    if (content != null) ViewCompat.requestApplyInsets(content);
-  }
-
-  @Override
-  public void onResume() {
-    super.onResume();
-    reapplyEdgeToEdge();
-  }
-
-  @Override
-  public void onWindowFocusChanged(boolean hasFocus) {
-    super.onWindowFocusChanged(hasFocus);
-    if (hasFocus) reapplyEdgeToEdge();
   }
 
   @Override
@@ -426,15 +365,11 @@ public class MainActivity extends BridgeActivity {
 
     const java = `package __PKG__;
 
-import android.content.ClipData;
-import android.content.ClipDescription;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Base64;
-import android.webkit.JavascriptInterface;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import androidx.core.view.inputmethod.EditorInfoCompat;
@@ -442,7 +377,6 @@ import androidx.core.view.inputmethod.InputConnectionCompat;
 import androidx.core.view.inputmethod.InputContentInfoCompat;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import org.json.JSONObject;
 __BASE_IMPORT__
 
 public class FarvionWebView extends __BASE_CLASS__ {
@@ -450,9 +384,6 @@ public class FarvionWebView extends __BASE_CLASS__ {
 
   public FarvionWebView(Context context, AttributeSet attrs) {
     super(context, attrs);
-    // Jalur cadangan tempel gambar: web memanggil window.FarvionClipboard.hasImage()/readImage()
-    // untuk membaca papan klip sistem langsung (tidak bergantung pada keyboard).
-    addJavascriptInterface(new ClipboardBridge(context), "FarvionClipboard");
   }
 
   @Override
@@ -508,66 +439,6 @@ public class FarvionWebView extends __BASE_CLASS__ {
       post(() -> evaluateJavascript(js, null));
     }).start();
     return true;
-  }
-
-  /** Jembatan baca papan klip sistem (hanya gambar) untuk window.FarvionClipboard. */
-  private static class ClipboardBridge {
-    private final Context ctx;
-
-    ClipboardBridge(Context c) {
-      this.ctx = c.getApplicationContext();
-    }
-
-    @JavascriptInterface
-    public boolean hasImage() {
-      try {
-        ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm == null || !cm.hasPrimaryClip()) return false;
-        ClipDescription d = cm.getPrimaryClipDescription();
-        return d != null && d.hasMimeType("image/*");
-      } catch (Exception e) {
-        return false;
-      }
-    }
-
-    /** JSON {"mime":..., "b64":...}; string kosong kalau tidak ada gambar / terlalu besar. */
-    @JavascriptInterface
-    public String readImage() {
-      try {
-        ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm == null || !cm.hasPrimaryClip()) return "";
-        ClipData clip = cm.getPrimaryClip();
-        if (clip == null || clip.getItemCount() == 0) return "";
-        Uri uri = clip.getItemAt(0).getUri();
-        if (uri == null) return "";
-        String mime = ctx.getContentResolver().getType(uri);
-        if (mime == null || !mime.startsWith("image/")) {
-          ClipDescription d = clip.getDescription();
-          mime = d.getMimeTypeCount() > 0 ? d.getMimeType(0) : "image/png";
-        }
-        InputStream in = ctx.getContentResolver().openInputStream(uri);
-        if (in == null) return "";
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[16384];
-        long total = 0;
-        int n;
-        while ((n = in.read(buf)) > 0) {
-          total += n;
-          if (total > MAX_BYTES) {
-            in.close();
-            return "";
-          }
-          out.write(buf, 0, n);
-        }
-        in.close();
-        JSONObject o = new JSONObject();
-        o.put("mime", mime);
-        o.put("b64", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
-        return o.toString();
-      } catch (Exception e) {
-        return "";
-      }
-    }
   }
 }
 `.replace("__PKG__", pkg).replace("__BASE_IMPORT__", baseImport).replace("__BASE_CLASS__", baseClass);
